@@ -1,3 +1,5 @@
+#include <Arduino.h>
+
 //**************************************************************//
 //  Author: doc@dawning.ca
 //**************************************************************//
@@ -12,6 +14,7 @@ using namespace std;
 #define l_R    3    //PWM pin for RED
 #define l_G    5    //PWM pin for GREEN
 #define l_B    6    //PWM pin for BLUE
+#define l_W	  9	//PWM pin for WHITE
 
 #define BAUD_RATE					9600
 #define NUMBER_OF_SPACES_BEFORE_PWM_IN_SET_CMD		2
@@ -27,6 +30,7 @@ using namespace std;
 #define NAME_BLUE	"BLUE"
 #define	NAME_LIGHTBLUE	"LIGHTBLUE"
 #define NAME_YELLOW	"YELLOW"
+#define NAME_DIMWHITE "DIMWHITE"
 #define NAME_PURPLE	"PURPLE"
 #define NAME_STANDBY	"STANDBY"
 
@@ -37,16 +41,19 @@ void refreshLEDs();
 void refreshLEDState(LED led);
 
 //Globals////
-LED LEDS[3];
+LED LEDS[4];
 Color WHITE;
 Color RED;
 Color GREEN;
+Color LIGHTGREEN;
 Color BLUE;
 Color LIGHTBLUE;
 Color YELLOW;
 Color PURPLE;
+Color ORANGE;
 Color OFF;
 Color STANDBY;
+Color DIMWHITE;
 String inputString;
 
 //HypnoOrb Components
@@ -63,7 +70,7 @@ int stepsPerHypnoOrbChange;
 //## Init functions ################################################
 //##################################################################
 void refreshLEDs() {
-	for(int i=0;i<3;i++) {
+	for(int i=0;i<4;i++) {
 		LEDS[i].refreshLED();
 	}
 }
@@ -71,32 +78,38 @@ void refreshLEDs() {
 //Arduino's firmware start of execution
 void setup() {
 	//Create color constants
-	WHITE.initialize(255, 255, 48);
-	RED.initialize(255, 0, 0);
-	GREEN.initialize(0, 255, 0);
-	BLUE.initialize(0, 0, 255);
-	LIGHTBLUE.initialize(0, 166, 255);
-	YELLOW.initialize(255, 255, 0);
-	PURPLE.initialize(255, 0, 255);
-	OFF.initialize(0, 0 ,0);
-	STANDBY.initialize(16, 0, 0);
+	WHITE.initialize(255, 147, 41, 255);
+	RED.initialize(255, 0, 0, 32);
+	GREEN.initialize(0, 255, 0, 32);
+	LIGHTGREEN.initialize(16, 255, 16, 100);
+	BLUE.initialize(0, 0, 255, 32);
+	LIGHTBLUE.initialize(0, 166, 255, 100);
+	YELLOW.initialize(255, 255, 0, 64);
+	PURPLE.initialize(255, 0, 255, 64);
+	ORANGE.initialize(255, 64, 0, 8);
+	OFF.initialize(0, 0 ,0, 0);
+	STANDBY.initialize(16, 0, 0, 5);
+	DIMWHITE.initialize(5, 8, 7, 5);
+
+	//(0, 191, 255, 64)
 
 
 	//Setup for each LED
 	LEDS[0].initialize(NAME_RED, l_R, true, 0, 255, 0);
 	LEDS[1].initialize(NAME_GREEN, l_G, true, 0, 255, 0);
 	LEDS[2].initialize(NAME_BLUE, l_B, true, 0, 255, 180);
+	LEDS[3].initialize(NAME_WHITE, l_W, true, 0, 255, 180);
 
 	Serial.begin(BAUD_RATE);
 	resetColorParameters();
-	hypnoOrbAscending = true;
+	hypnoOrbAscending = false;
 	hypnoOrbDeltaSubject = &LEDS[1];
 	cyclesSinceLastStep = 0;
 	stepsSinceChange = 0;
 	stepsPerHypnoOrbChange = 96;
 
 	Serial.println("Illuminatrix greets you.");
-	setForSingleColorCycle(2);
+	setColor(STANDBY);
 } //end setup
 
 
@@ -108,17 +121,28 @@ void resetColorParameters() {
 	cyclesPerStep = DEFAULT_CYCLES_PER_STEP;
 	minBrightness = DEFAULT_MIN_BRIGHTNESS;
 	hypnoOrb = false;
-	for (int i=0;i<3;i++) {
+	for (int i=0;i<4;i++) {
 		LEDS[i].minPWM = 0;
 		LEDS[i].maxPWM = 255;
 		LEDS[i].enable();
 	}
 }
 
-
+void printLEDsNew() {
+	Serial.println(" ");
+	Serial.print("(");
+	for (int i=0;i<4;i++) {
+		Serial.print(LEDS[i].getValue());
+		if (i != 3) {
+			Serial.print(", ");
+		}
+	}
+	Serial.println(")");
+}
 
 void printLEDs() {
-	for(int i=0;i<3;i++) {
+	Serial.println(" ");
+	for(int i=0;i<4;i++) {
 		Serial.print("LED # ");
 		Serial.print(i);
 		Serial.print(", value: ");
@@ -130,10 +154,10 @@ void printLEDs() {
 
 void setLEDs(boolean state){
 	Serial.println("LED state changed");
-	for (int i=0;i<3;i++) {
+	for (int i=0;i<4;i++) {
 		LEDS[i].activated = state;
 	}
-	
+
 	if (!state) {
 		hypnoOrb = false;
 		resetColorParameters();
@@ -188,13 +212,14 @@ void setLED(String input) {
 }
 
 void setColor(Color color) {
-	resetColorParameters();	
+	resetColorParameters();
 
-	for (int i=0;i<3;i++) {
+	for (int i=0;i<4;i++) {
 		LED* led = &LEDS[i];
 		if (led->name.startsWith(NAME_RED)) led->setTarget(color.red);
 		if (led->name.startsWith(NAME_GREEN)) led->setTarget(color.green);
 		if (led->name.startsWith(NAME_BLUE)) led->setTarget(color.blue);
+		if (led->name.startsWith(NAME_WHITE)) led->setTarget(color.white);
 		led->enable();
 	}
 }
@@ -206,7 +231,7 @@ void cycleOn() {
 }
 
 void interpretInput(String input) {
-	if (inputString.startsWith("ON")) setColor(BLUE);
+	if (inputString.startsWith("ON")) setColor(STANDBY);
 	if (inputString.startsWith("OFF")) setColor(OFF);
 	if (inputString.startsWith("SET")) setLED(inputString);
 	if (inputString.startsWith(NAME_WHITE)) setColor(WHITE);
@@ -217,13 +242,14 @@ void interpretInput(String input) {
 	if (inputString.startsWith(NAME_YELLOW)) setColor(YELLOW);
 	if (inputString.startsWith(NAME_PURPLE)) setColor(PURPLE);
 	if (inputString.startsWith(NAME_STANDBY)) setColor(STANDBY);
+	if (inputString.startsWith(NAME_DIMWHITE)) setColor(DIMWHITE);
 	if (inputString.startsWith("CYCLEON")) cycleOn();
 	if (inputString.startsWith("CYCLEOFF")) hypnoOrb=false;
 	if (inputString.startsWith("CYCLEWHITE")) setForWhiteCycle();
 	if (inputString.startsWith("CYCLERED")) setForSingleColorCycle(0);
 	if (inputString.startsWith("CYCLEGREEN")) setForSingleColorCycle(1);
 	if (inputString.startsWith("CYCLEBLUE")) setForSingleColorCycle(2);
-	printLEDs();
+	printLEDsNew();
 }
 
 void setForWhiteCycle() {
@@ -231,6 +257,7 @@ void setForWhiteCycle() {
 	LEDS[0].minPWM = 128;
 	LEDS[1].minPWM = 128;
 	LEDS[2].minPWM = 96;
+	LEDS[3].minPWM = 128;
 	hypnoOrb = true;
 }
 
@@ -238,7 +265,7 @@ void setForSingleColorCycle(int ledNumber) {
 	resetColorParameters();
 	//cyclesPerStep = 30;
 	minBrightness = DEFAULT_MIN_BRIGHTNESS_FOR_SINGLE_COLOR_CYCLE;
-	for (int i=0;i<3;i++) {
+	for (int i=0;i<4;i++) {
 		if (i == ledNumber) {
 			LEDS[i].minPWM = minBrightness;
 			LEDS[i].maxPWM = 255;
@@ -267,19 +294,19 @@ void serviceInputIfNecessary() {
 //This function is intended to prevent all colours from ever going below the min threshold
 bool isNotOkayToDescendFurther(bool preference) {
 	int brightnessSum = 0;
-	for (int i=0;i<3;i++) {
+	for (int i=0;i<4;i++) {
 		LED* led = &LEDS[i];
 		brightnessSum += led->getValue();
 	}
 	if (brightnessSum <= minBrightness) {
 		return true;
-	} 
+	}
 	return preference;
 }
 
 //Grabs a suitable random LED, disregards inactive LEDs
 int getRandomLED() {
-	int led = random(0,3); //gets a random int 0 <= led < 3
+	int led = random(0,4); //gets a random int 0 <= led < 3
 	int tryLimit = 10;
 	while (!LEDS[led].activated) {
 		if (tryLimit < 0) break;
